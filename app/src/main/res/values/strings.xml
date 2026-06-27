@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">MindMate AI</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_check_in">Daily Check-In</string>
+    <string name="cd_companion_chat">AI Companion Chat</string>
+    <string name="cd_dashboard">Dashboard</string>
+    <string name="cd_toolkit">Wellness Toolkit</string>
+    <string name="cd_crisis">Emergency Help</string>
+    <string name="cd_settings">Settings</string>
+    <string name="cd_save_entry">Save Entry</string>
+    <string name="cd_mood_slider">Mood Slider</string>
+    <string name="cd_stress_slider">Stress Level Slider</string>
+    <string name="cd_anxiety_slider">Anxiety Level Slider</string>
+    <string name="cd_energy_slider">Energy Level Slider</string>
+    <string name="cd_motivation_slider">Motivation Level Slider</string>
+    <string name="cd_confidence_slider">Self-confidence Slider</string>
+</resources>

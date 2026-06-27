@@ -1,0 +1,10 @@
+{
+  "name": "MindMate AI",
+  "description": "Student Mental Wellness Companion for high-stakes competitive exams. Uses AI to analyze daily journals, detect burnout, track stress triggers, and offer personalized CBT-based support.",
+  "requestFramePermissions": [
+    "android.permission.CAMERA"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
