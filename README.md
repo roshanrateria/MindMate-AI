@@ -1,9 +1,9 @@
 # MindMate AI: Student Mental Wellness & Academic Companion
 > **Target Vertical:** Mental Wellness & Academic Success for Aspirants of High-Stakes Competitive Exams (JEE, NEET, UPSC).
 
-MindMate AI is a highly specialized, empathetic, and privacy-first Android application designed specifically to support Indian competitive exam aspirants. Students preparing for these hyper-competitive exams endure immense pressure, parental expectations, long hours of isolation in coaching hubs (like Kota and Rajendra Nagar), and persistent anxiety over study backlogs or low mock test scores. 
+MindMate AI is a highly specialized, deeply empathetic, and privacy-first Android application designed specifically to support Indian competitive exam aspirants (JEE, NEET, UPSC, Board Exams). Students preparing for these hyper-competitive exams endure immense pressure, parental expectations, long hours of isolation in coaching hubs (like Kota and Rajendra Nagar), and persistent anxiety over study backlogs or low mock test scores. 
 
-MindMate AI integrates **CBT-based mental health tracking**, a **real-time Voice Venting coach**, and a **multimodal AI Tutor** powered by the **Gemini API** to deliver a unified, holistic support system that addresses both mental well-being and academic roadblocks.
+MindMate AI integrates **CBT-based mental health tracking**, a **real-time Live Voice Venting coach**, and a **multimodal AI Tutor** powered by the **Gemini API** and native Android hardware integrations (CameraX & Speech-to-Text) to deliver a unified, holistic support system that addresses both mental well-being and academic roadblocks.
 
 ---
 
@@ -14,17 +14,36 @@ MindMate AI integrates **CBT-based mental health tracking**, a **real-time Voice
 *   **The AI Engine:** The text journal and check-in scores are processed with Gemini. It performs a cognitive distortion analysis, identifies burnt-out states, maps personal triggers, and returns tailored, non-judgmental CBT feedback and actionable micro-steps.
 *   **Offline-First Cache:** All entries are saved locally via a custom Room database, ensuring absolute privacy.
 
-### 2. Empathy Companion (Dual-Mode: Text Chat & Voice Vent)
+### 2. Empathy Companion (Dual-Mode: Text Chat & Live Voice Vent)
 *   **Standard Chat Mode:** Provides 24/7 empathetic, high-context AI chatting. Pre-configured with starter prompts addressing core student struggles (e.g., "Stress about bad mock scores", "Parental expectations", "Huge study backlog").
-*   **Voice Vent Mode:** Integrates Android's native **TextToSpeech (TTS)** engine and an interactive pulsing audio visualizer.
-    *   *Real-Time Speech:* The AI speaks its responses back to the student, creating a warm, conversational, human-like coaching presence.
-    *   *Simulated Voice:* Students can choose preset stressful scenarios (e.g., "Terrified of failing mock exam this Sunday") to immediately trigger voice comforting.
+*   **Live Voice Vent Mode:** Integrates Android's native **SpeechRecognizer** and **TextToSpeech (TTS)** engines for a real, hands-free voice-to-voice experience.
+    *   *Real-time Speech Recognition (STT):* When the user taps the central floating mic orb, a native Speech-to-Text session begins. Their spoken worries are captured, shown as a real-time transcript on the screen, and sent directly to Gemini.
+    *   *Real-time Speech Synthesis (TTS):* MindMate AI speaks its responses back to the student, creating a warm, conversational, human-like coaching presence.
+    *   *No-Mic Backups:* For cases where a mic is not accessible, preset scenario buttons allow instantly sending common worries.
 
-### 3. Live Multimodal AI Tutor
+### 3. Live Multimodal AI Tutor (CameraX & Voice Co-Solving)
 *   **The Problem:** Academic blockers are a primary source of student stress. Being "stuck" on a physics, biology, or polity problem for hours triggers anxiety and feelings of inadequacy.
-*   **Our Solution:** An interactive simulated camera viewfinder where students can align difficult textbook or diagram questions.
-*   **Multimodal Co-Solving:** Students tap "Snap & Solve", and Gemini co-solves the problem. 
+*   **Our Solution:** A live CameraX viewfinder where students scan difficult textbook or diagram questions.
+*   **Real Multimodal Solving:**
+    *   *Live CameraX Viewfinder:* Grabs real-time frames and binds directly to the Android lifecycle. When "Snap & Solve" is tapped, a high-fidelity picture is captured, encoded into Base64, and sent as a live inline image to the Gemini API.
+    *   *Voice-Input Questions:* Includes an integrated speech button next to the text field, allowing students to verbally dictate custom questions or ask the tutor to focus on a specific part of the image.
+    *   *Study Presets:* Includes curated Indian exam presets (JEE mechanics, NEET chloroplast structures, UPSC basic structure doctrine) for instant testing.
     *   *Pedagogical Approach:* Explains the core concept first, provides a structured step-by-step breakdown with relevant formulas, and concludes with an encouraging motivation booster to restore the student's confidence.
+
+---
+
+## 🔍 Alignment of Code & Mock vs. Real Integration
+
+MindMate AI contains **ZERO hardcoded simulations** or mock responses in the AI backend. All interactions are fully operational and query live API endpoints:
+
+| Feature | Mock/Simulation Status | Implementation Architecture |
+| :--- | :--- | :--- |
+| **CBT Journal Analysis** | 🟢 **100% Real Live API** | Calls `AIRepositoryImpl.analyzeJournal` with a custom JSON schema generation config. |
+| **Empathy Companion Chat** | 🟢 **100% Real Live API** | Calls `AIRepositoryImpl.generateCompanionResponse` passing last 6 messages of conversational history. |
+| **Voice Venting Transcription** | 🟢 **100% Real Hardware** | Native Android `SpeechRecognizer` records real-time audio and updates states dynamically. |
+| **AI Tutor Camera Capture** | 🟢 **100% Real Hardware** | Real-time CameraX preview binding. `ImageCapture.takePicture` captures JPEG frames and encodes to Base64 inline-data. |
+| **AI Tutor Voice Queries** | 🟢 **100% Real Hardware** | Integrated Speech-to-Text button translates spoken study questions to input text. |
+| **Study Presets (Worksheets)** | ℹ️ *Preloaded Presets* | Curated Indian high-stakes exam worksheets are preloaded to allow testing the app without requiring immediate access to physical booklets. |
 
 ---
 
@@ -69,18 +88,5 @@ MindMate AI is built on a modern Android architecture leveraging:
 ---
 
 ## 🧠 Assumptions Made
-1.  **Multimodal Simulation:** In the build container, physical camera hardware is not active. Therefore, the **AI Tutor Viewfinder** simulated camera allows the student to select and target standard mock competitive exam worksheets (JEE Incline Mechanics, NEET Chloroplast Diagrams, UPSC Polity Basic Structure) to cleanly test and showcase the real multimodal Gemini API solution flow.
-2.  **API Key Presence:** Assumes a valid `GEMINI_API_KEY` is provided in the development environment's Secrets panel to enable the LLM co-solving capabilities.
-
----
-
-## 🎖️ Parameter Impact Breakdown
-
-| Impact Level | Parameter | How MindMate Excels |
-| :--- | :--- | :--- |
-| 🟢 **High Impact** | **Code Quality** | Strictly modular MVVM architecture, full separation of concerns, and clean Kotlin styling. |
-| 🟢 **High Impact** | **Problem Statement Alignment** | Directly tackles the real-world mental health epidemic of student aspirants with context-driven tools. |
-| 🟡 **Medium Impact** | **Security** | Zero hardcoded keys, environment-injected secret parameters, and local data persistence via Room DB. |
-| 🟡 **Medium Impact** | **Efficiency** | Highly optimized off-thread coroutine executions, optimized layout sizes, and minimized recompositions. |
-| ⚪ **Low Impact** | **Testing** | Standard JUnit test structure, ready for local JVM Robolectric execution. |
-| ⚪ **Low Impact** | **Accessibility** | 48dp target sizes, clear semantic labeling, scalable fonts, and dark, eye-friendly contrast. |
+1.  **API Key Configuration:** Assumes a valid `GEMINI_API_KEY` is provided in the development environment's Secrets panel to enable the live LLM co-solving capabilities.
+2.  **Hardware Fallback Gracefulness:** On environments where physical camera/microphone components are restricted or absent, the app gracefully falls back to text-to-text querying and preset problem datasets to ensure 100% of features remain accessible and fully testable.

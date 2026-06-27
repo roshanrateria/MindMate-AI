@@ -1,6 +1,21 @@
 package com.example.presentation.screens
 
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.util.Base64
+import android.util.Log
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -31,23 +46,30 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.example.domain.model.ChatMessage
 import com.example.presentation.viewmodel.ChatUiState
 import com.example.presentation.viewmodel.CompanionMode
 import com.example.presentation.viewmodel.CompanionViewModel
 import com.example.presentation.viewmodel.TutorUiState
 import com.example.ui.theme.*
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun CompanionScreen(
     viewModel: CompanionViewModel,
@@ -62,6 +84,78 @@ fun CompanionScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+
+    val recordAudioPermissionState = rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
+    val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
+
+    // Speech Recognizer setup
+    var partialText by remember { mutableStateOf("") }
+    val speechRecognizer = remember { SpeechRecognizer.createSpeechRecognizer(context) }
+    
+    val recognitionListener = remember {
+        object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                partialText = "Listening..."
+            }
+            override fun onBeginningOfSpeech() {
+                partialText = "I'm listening..."
+            }
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                partialText = "Processing voice..."
+            }
+            override fun onError(error: Int) {
+                partialText = ""
+                if (viewModel.isListening.value) {
+                    viewModel.toggleListening()
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val text = matches[0]
+                    partialText = ""
+                    viewModel.sendMessage(text)
+                }
+                if (viewModel.isListening.value) {
+                    viewModel.toggleListening()
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    partialText = matches[0]
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            speechRecognizer.destroy()
+        }
+    }
+
+    LaunchedEffect(isListening) {
+        if (isListening) {
+            if (recordAudioPermissionState.status.isGranted) {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString())
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                }
+                speechRecognizer.setRecognitionListener(recognitionListener)
+                speechRecognizer.startListening(intent)
+            } else {
+                recordAudioPermissionState.launchPermissionRequest()
+                viewModel.toggleListening() // Reset listen state
+            }
+        } else {
+            speechRecognizer.stopListening()
+        }
+    }
 
     // Initialize TextToSpeech engine
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -408,7 +502,7 @@ fun CompanionScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (isListening) Icons.Default.Info else Icons.Default.PlayArrow,
+                                    imageVector = if (isListening) Icons.Default.Close else Icons.Default.PlayArrow,
                                     contentDescription = "Mic button",
                                     tint = Color.White,
                                     modifier = Modifier.size(42.dp)
@@ -417,6 +511,26 @@ fun CompanionScreen(
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
+
+                        // Real-time transcript display
+                        if (partialText.isNotEmpty()) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
+                                border = BorderStroke(1.dp, PrimaryIndigo.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = partialText,
+                                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
 
                         // Listening Status / Action guide
                         Text(
@@ -429,7 +543,7 @@ fun CompanionScreen(
 
                         // Preset venting quick prompts
                         Text(
-                            text = "Or choose a vent scenario to simulate voice:",
+                            text = "No mic? Tap to instantly speak a preset worry:",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
                             modifier = Modifier.padding(bottom = 12.dp)
@@ -493,6 +607,51 @@ fun CompanionScreen(
                         )
                     )
 
+                    val cameraGranted = cameraPermissionState.status.isGranted
+                    var customTutorQuestion by remember { mutableStateOf("") }
+                    var tutorMicListening by remember { mutableStateOf(false) }
+                    var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
+                    val lifecycleOwner = LocalLifecycleOwner.current
+
+                    val startTutorSpeechToText = {
+                        if (recordAudioPermissionState.status.isGranted) {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString())
+                                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                            }
+                            val tutorSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+                            tutorSpeechRecognizer.setRecognitionListener(object : RecognitionListener {
+                                override fun onReadyForSpeech(params: Bundle?) {
+                                    tutorMicListening = true
+                                }
+                                override fun onBeginningOfSpeech() {}
+                                override fun onRmsChanged(rmsdB: Float) {}
+                                override fun onBufferReceived(buffer: ByteArray?) {}
+                                override fun onEndOfSpeech() {
+                                    tutorMicListening = false
+                                }
+                                override fun onError(error: Int) {
+                                    tutorMicListening = false
+                                    tutorSpeechRecognizer.destroy()
+                                }
+                                override fun onResults(results: Bundle?) {
+                                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                                    if (!matches.isNullOrEmpty()) {
+                                        customTutorQuestion = matches[0]
+                                    }
+                                    tutorMicListening = false
+                                    tutorSpeechRecognizer.destroy()
+                                }
+                                override fun onPartialResults(partialResults: Bundle?) {}
+                                override fun onEvent(eventType: Int, params: Bundle?) {}
+                            })
+                            tutorSpeechRecognizer.startListening(intent)
+                        } else {
+                            recordAudioPermissionState.launchPermissionRequest()
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -515,7 +674,7 @@ fun CompanionScreen(
                             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
                         )
 
-                        // 1. Simulated Camera Viewfinder
+                        // 1. Live Camera / Simulator Box
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -524,6 +683,73 @@ fun CompanionScreen(
                                 .background(Color.Black)
                                 .border(2.dp, if (triggerFlash) Color.White else GlassBorder, RoundedCornerShape(16.dp))
                         ) {
+                            if (cameraGranted) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        val previewView = PreviewView(ctx).apply {
+                                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                                        }
+                                        val executor = ContextCompat.getMainExecutor(ctx)
+                                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                                        cameraProviderFuture.addListener({
+                                            val cameraProvider = cameraProviderFuture.get()
+                                            val preview = Preview.Builder().build().also {
+                                                it.setSurfaceProvider(previewView.surfaceProvider)
+                                            }
+                                            val capture = ImageCapture.Builder()
+                                                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                                                .build()
+                                            imageCapture = capture
+
+                                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                                            try {
+                                                cameraProvider.unbindAll()
+                                                cameraProvider.bindToLifecycle(
+                                                    lifecycleOwner,
+                                                    cameraSelector,
+                                                    preview,
+                                                    capture
+                                                )
+                                            } catch (e: Exception) {
+                                                Log.e("CameraPreview", "Camera binding failed", e)
+                                            }
+                                        }, executor)
+                                        previewView
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.Center,
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = "Camera Required",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Camera access is needed to scan study materials.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        onClick = { cameraPermissionState.launchPermissionRequest() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("Grant Camera Permission", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+
                             if (triggerFlash) {
                                 Box(modifier = Modifier.fillMaxSize().background(Color.White))
                                 LaunchedEffect(Unit) {
@@ -536,40 +762,38 @@ fun CompanionScreen(
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val strokeColor = Color.White.copy(alpha = 0.15f)
                                 val strokeWidth = 1.dp.toPx()
-                                // Vertical Grid lines
                                 drawLine(strokeColor, start = androidx.compose.ui.geometry.Offset(size.width / 3, 0f), end = androidx.compose.ui.geometry.Offset(size.width / 3, size.height), strokeWidth = strokeWidth)
                                 drawLine(strokeColor, start = androidx.compose.ui.geometry.Offset(size.width * 2 / 3, 0f), end = androidx.compose.ui.geometry.Offset(size.width * 2 / 3, size.height), strokeWidth = strokeWidth)
-                                // Horizontal Grid lines
                                 drawLine(strokeColor, start = androidx.compose.ui.geometry.Offset(0f, size.height / 3), end = androidx.compose.ui.geometry.Offset(size.width, size.height / 3), strokeWidth = strokeWidth)
                                 drawLine(strokeColor, start = androidx.compose.ui.geometry.Offset(0f, size.height * 2 / 3), end = androidx.compose.ui.geometry.Offset(size.width, size.height * 2 / 3), strokeWidth = strokeWidth)
                             }
 
-                            // Active targeted question info card in Camera Viewfinder
+                            // Active targeted question info card overlay inside Camera Viewfinder
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.Center,
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.Bottom,
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f)),
+                                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                                     shape = RoundedCornerShape(8.dp),
                                     border = BorderStroke(1.dp, PrimaryIndigo.copy(alpha = 0.4f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
                                             text = "📷 Viewfinder Target: ${sampleProblems[selectedProblemIndex].first}",
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             color = SecondaryLavender
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
                                             text = sampleProblems[selectedProblemIndex].second,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Color.White,
-                                            maxLines = 3
+                                            maxLines = 2
                                         )
                                     }
                                 }
@@ -584,7 +808,59 @@ fun CompanionScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Custom question query input with speech button
+                        Text(
+                            text = "Ask Tutor a Specific Question (or use preset sheet):",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = customTutorQuestion,
+                                onValueChange = { customTutorQuestion = it },
+                                placeholder = { Text("What do you want me to explain here?", fontSize = 13.sp) },
+                                maxLines = 2,
+                                singleLine = false,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = PrimaryIndigo,
+                                    unfocusedBorderColor = GlassBorder,
+                                    focusedContainerColor = DarkSurfaceCard,
+                                    unfocusedContainerColor = DarkSurfaceCard
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                            )
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+                            
+                            IconButton(
+                                onClick = { startTutorSpeechToText() },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(
+                                        if (tutorMicListening) CrisisRed else GlassBorder,
+                                        CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = if (tutorMicListening) Icons.Default.Close else Icons.Default.PlayArrow,
+                                    contentDescription = "Speak Question",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         // Textbook Selector Carousel
                         Row(
@@ -592,7 +868,7 @@ fun CompanionScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Choose Problem Sheet:",
+                                text = "Or Choose Study Problem Preset:",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary,
                                 modifier = Modifier.weight(1f)
@@ -644,11 +920,37 @@ fun CompanionScreen(
                             onClick = {
                                 triggerFlash = true
                                 val item = sampleProblems[selectedProblemIndex]
-                                viewModel.solveProblem(
-                                    question = "Solve this step-by-step with formulas and clear structures: ${item.second} (Context: ${item.third})",
-                                    imageBase64 = null, // In android client, we trigger prompt context simulation to real API
-                                    mimeType = null
-                                )
+                                val baseQuestion = customTutorQuestion.ifBlank { item.second }
+                                val finalQuestion = "Solve this step-by-step with formulas and clear structures: $baseQuestion"
+                                
+                                val currentCapture = imageCapture
+                                if (cameraGranted && currentCapture != null) {
+                                    viewModel.setTutorSolving()
+                                    currentCapture.takePicture(
+                                        ContextCompat.getMainExecutor(context),
+                                        object : ImageCapture.OnImageCapturedCallback() {
+                                            override fun onCaptureSuccess(image: ImageProxy) {
+                                                try {
+                                                    val buffer = image.planes[0].buffer
+                                                    val bytes = ByteArray(buffer.remaining())
+                                                    buffer.get(bytes)
+                                                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                                                    viewModel.solveProblem(finalQuestion, base64, "image/jpeg")
+                                                } catch (e: Exception) {
+                                                    viewModel.setTutorError("Failed to convert image: ${e.localizedMessage}")
+                                                } finally {
+                                                    image.close()
+                                                }
+                                            }
+                                            
+                                            override fun onError(exception: ImageCaptureException) {
+                                                viewModel.setTutorError("Camera capture failed: ${exception.localizedMessage}")
+                                            }
+                                        }
+                                    )
+                                } else {
+                                    viewModel.solveProblem(finalQuestion, null, null)
+                                }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
                             modifier = Modifier

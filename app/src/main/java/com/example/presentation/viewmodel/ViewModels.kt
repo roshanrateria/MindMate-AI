@@ -334,6 +334,14 @@ class CompanionViewModel(
         }
     }
 
+    fun setTutorSolving() {
+        _tutorUiState.value = TutorUiState.Solving
+    }
+
+    fun setTutorError(message: String) {
+        _tutorUiState.value = TutorUiState.Error(message)
+    }
+
     val chatMessages: StateFlow<List<ChatMessage>> = wellnessRepository.getChatMessages()
         .stateIn(
             scope = viewModelScope,
