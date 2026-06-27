@@ -15,4 +15,14 @@
 .cxx
 local.properties
 .env
+.env.*
+!.env.example
 debug.keystore
+
+# Web Specific Ignores
+web/node_modules/
+web/dist/
+web/.vercel/
+web/.env
+web/.env.local
+web/.DS_Store
